@@ -2,13 +2,21 @@
  * Created by drksnw on 10/6/16.
  */
 
+
+import com.sun.javafx.robot.FXRobot;
+import com.sun.javafx.robot.FXRobotFactory;
 import javafx.application.Application;
-import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
+import sun.security.util.SecurityConstants;
+
+import java.awt.*;
 
 public class Main extends Application {
 
@@ -18,19 +26,40 @@ public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("Hello World !");
-        Button btn = new Button();
-        btn.setText("Say Hello World");
-        btn.setOnAction(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                System.out.println("Hello World !");
-            }
-        });
+        try{
+            primaryStage.setTitle("Hello World !");
+            Label lbl = new Label();
+            lbl.setText("Capturing mouse. Press Q to quit.");
 
-        StackPane root = new StackPane();
-        root.getChildren().add(btn);
-        primaryStage.setScene(new Scene(root, 300, 250));
-        primaryStage.show();
+            StackPane root = new StackPane();
+            root.getChildren().add(lbl);
+            Scene sc = new Scene(root, 500, 500);
+            primaryStage.setScene(sc);
+
+            Robot robot = new Robot();
+
+            sc.setOnMouseMoved(new EventHandler<MouseEvent>() {
+                @Override
+                public void handle(MouseEvent event) {
+                    System.out.println("DeltaX: "+ ScreenHelper.getDeltaFromCenterX((int)event.getScreenX())+" DeltaY: "+ ScreenHelper.getDeltaFromCenterY((int)event.getScreenY()));
+                    robot.mouseMove(ScreenHelper.getCenterX(), ScreenHelper.getCenterY());
+                }
+            });
+
+            sc.setOnKeyPressed(new EventHandler<KeyEvent>() {
+                @Override
+                public void handle(KeyEvent event) {
+                    if(event.getCode() == KeyCode.Q){
+                        System.exit(0);
+                    }
+                }
+            });
+
+
+            primaryStage.show();
+        } catch (AWTException e){
+            e.printStackTrace();
+        }
+
     }
 }
