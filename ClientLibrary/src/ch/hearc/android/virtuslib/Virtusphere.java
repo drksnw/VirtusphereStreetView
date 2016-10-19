@@ -24,6 +24,7 @@ public class Virtusphere {
             t.start();
         } catch(IOException ex){
             System.err.println("Can't connect to the Virtusphere !");
+            ex.printStackTrace();
         }
     }
 
