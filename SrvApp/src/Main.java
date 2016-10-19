@@ -3,8 +3,7 @@
  */
 
 
-import com.sun.javafx.robot.FXRobot;
-import com.sun.javafx.robot.FXRobotFactory;
+import com.sun.javafx.binding.StringFormatter;
 import javafx.application.Application;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
@@ -14,7 +13,6 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
-import sun.security.util.SecurityConstants;
 
 import java.awt.*;
 
@@ -26,8 +24,15 @@ public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        //Starting the server
+        TCPServer server = new TCPServer();
+
+        //Server contains an infinite loop, so putting it into a thread.
+        Thread serverThread = new Thread(server);
+        serverThread.start();
+
         try{
-            primaryStage.setTitle("Hello World !");
+            primaryStage.setTitle("Virtusphere Server App");
             Label lbl = new Label();
             lbl.setText("Capturing mouse. Press Q to quit.");
 
@@ -41,7 +46,13 @@ public class Main extends Application {
             sc.setOnMouseMoved(new EventHandler<MouseEvent>() {
                 @Override
                 public void handle(MouseEvent event) {
-                    System.out.println("DeltaX: "+ ScreenHelper.getDeltaFromCenterX((int)event.getScreenX())+" DeltaY: "+ ScreenHelper.getDeltaFromCenterY((int)event.getScreenY()));
+                    //Getting deltas
+                    int dx = ScreenHelper.getDeltaFromCenterX((int)event.getScreenX());
+                    int dy = ScreenHelper.getDeltaFromCenterY((int)event.getScreenY());
+
+                    server.sendToAll(String.format("MOVE#%d;%d",dx,dy));
+
+                    //Sets the mouse pointer on the center of the screen
                     robot.mouseMove(ScreenHelper.getCenterX(), ScreenHelper.getCenterY());
                 }
             });
