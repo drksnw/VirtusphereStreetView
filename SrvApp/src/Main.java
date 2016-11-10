@@ -31,6 +31,10 @@ public class Main extends Application {
         Thread serverThread = new Thread(server);
         serverThread.start();
 
+        //Discovery server thread
+        Thread discoveryThread = new Thread(DiscoveryThread.getInstance());
+        discoveryThread.start();
+
         try{
             primaryStage.setTitle("Virtusphere Server App");
             Label lbl = new Label();
@@ -50,10 +54,18 @@ public class Main extends Application {
                     int dx = ScreenHelper.getDeltaFromCenterX((int)event.getScreenX());
                     int dy = ScreenHelper.getDeltaFromCenterY((int)event.getScreenY());
 
+
                     server.sendToAll(String.format("MOVE#%d;%d",dx,dy));
 
                     //Sets the mouse pointer on the center of the screen
                     robot.mouseMove(ScreenHelper.getCenterX(), ScreenHelper.getCenterY());
+                }
+            });
+
+            sc.setOnMouseExited(new EventHandler<MouseEvent>() {
+                @Override
+                public void handle(MouseEvent event) {
+                    server.sendToAll("MEXITED#0");
                 }
             });
 

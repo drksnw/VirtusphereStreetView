@@ -21,8 +21,13 @@ public class Main {
             public void disconnected() {
                 System.err.println("Virtusphere disconnected.");
             }
+
+            @Override
+            public void sphereExited(){
+                System.err.println("Pointer is out of capture window !");
+            }
         });
 
-        virtusphere.connect("localhost", 28000);
+        virtusphere.discoverAndConnect();
     }
 }

@@ -6,4 +6,5 @@ package ch.hearc.android.virtuslib;
 public abstract class VirtusphereEvent {
     public abstract void moved(int x, int y);
     public abstract void disconnected();
+    public abstract void sphereExited();
 }
