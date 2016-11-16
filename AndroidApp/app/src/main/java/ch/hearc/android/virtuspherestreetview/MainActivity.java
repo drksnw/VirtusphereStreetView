@@ -1,16 +1,18 @@
 package ch.hearc.android.virtuspherestreetview;
 
+import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
+import android.opengl.GLUtils;
 import android.opengl.Matrix;
 import android.os.Vibrator;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.TextView;
-import android.widget.Toast;
 
-import com.google.vr.ndk.base.AndroidCompat;
+import com.google.vr.sdk.base.AndroidCompat;
 import com.google.vr.sdk.base.Eye;
 import com.google.vr.sdk.base.GvrActivity;
 import com.google.vr.sdk.base.GvrView;
@@ -24,6 +26,7 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 
 import javax.microedition.khronos.egl.EGLConfig;
 
@@ -31,66 +34,92 @@ import ch.hearc.android.virtuslib.Virtusphere;
 import ch.hearc.android.virtuslib.VirtusphereEvent;
 
 public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
+    //App specific attributes
+    private Vibrator vibrator;
+    private Virtusphere virtusphere;
 
-    Virtusphere vsphere;
-
-    private static final float CAMERA_Z = 0.01f;
+    //OpenGL scene constants
+    private static final float CAMERA_Z = 0.0f;
     private static final float Z_NEAR = 0.1f;
     private static final float Z_FAR = 100.0f;
-    // We keep the light always position just above the user.
-    private static final float[] LIGHT_POS_IN_WORLD_SPACE = new float[] {0.0f, 2.0f, 0.0f, 1.0f};
-
+    private static final float[] LIGHT_POS_IN_WORLD_SPACE = new float[] {0.0f, 0.0f, 0.0f, 0.0f};
     private static final int COORDS_PER_VERTEX = 3;
 
     private final float[] lightPosInEyeSpace = new float[4];
 
-    private FloatBuffer floorVertices;
-    private FloatBuffer floorColors;
-    private FloatBuffer floorNormals;
+    //OpenGL buffers
+    private FloatBuffer boxVertices;
+    private FloatBuffer boxColors;
+    private FloatBuffer boxNormals;
+    private IntBuffer boxIndices;
+    private ByteBuffer boxTexture;
 
-    private int floorProgram;
+    //OpenGL pointers
+    private int boxProgram;
+    private int boxPositionParam;
+    private int boxNormalParam;
+    private int boxColorParam;
+    private int boxIndicesParam;
+    private int boxTextureParam;
+    private int boxModelParam;
+    private int boxModelViewParam;
+    private int boxModelViewProjectionParam;
+    private int boxLightPosParam;
 
-    private int floorPositionParam;
-    private int floorNormalParam;
-    private int floorColorParam;
-    private int floorModelParam;
-    private int floorModelViewParam;
-    private int floorModelViewProjectionParam;
-    private int floorLightPosParam;
-
+    //OpenGL matrices
     private float[] camera;
     private float[] view;
     private float[] headView;
     private float[] modelViewProjection;
     private float[] modelView;
-    private float[] modelFloor;
-
-    private float[] tempPosition;
+    private float[] modelBox;
     private float[] headRotation;
 
+    //OpenGL parameters
     private float floorDepth = 20f;
 
-    private Vibrator vibrator;
-
-
-    private String readRawTextFile(int resId) {
+    /**
+     * Reads a file stored in R.raw. Used to load shaders.
+     * @param resId Resource ID (R.raw.file_name)
+     * @return A String with the contents of the file
+     */
+    private String readRawTextFile(int resId){
         InputStream inputStream = getResources().openRawResource(resId);
-        try {
+        try{
             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
             StringBuilder sb = new StringBuilder();
             String line;
-            while ((line = reader.readLine()) != null) {
+            while((line = reader.readLine()) != null){
                 sb.append(line).append("\n");
             }
             reader.close();
             return sb.toString();
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch(IOException ex){
+            ex.printStackTrace();
         }
         return null;
     }
 
-    private int loadGlShader(int type, int resId){
+    private Bitmap getBmpFromRaw(int resid){
+        InputStream is = getResources().openRawResource(resid);
+        Bitmap bmp = BitmapFactory.decodeStream(is);
+        return bmp;
+    }
+
+    private static void checkGLError(String label){
+        int error;
+        while ((error = GLES20.glGetError()) != GLES20.GL_NO_ERROR){
+            Log.e(label, "glerror: "+error);
+        }
+    }
+
+    /**
+     * Compiles raw text file into OpenGL Shader
+     * @param type Shader type (Vertex or Fragment shader)
+     * @param resId Resource ID of the shader source code (R.raw.shader_code)
+     * @return Pointer to compiled shader
+     */
+    private int loadGLShader(int type, int resId){
         String code = readRawTextFile(resId);
         int shader = GLES20.glCreateShader(type);
         GLES20.glShaderSource(shader, code);
@@ -112,18 +141,17 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         return shader;
     }
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        //Initializing vibrator
         vibrator = (Vibrator)getSystemService(Context.VIBRATOR_SERVICE);
 
         //Initialize Cardboard API
         GvrView gvrView = (GvrView)findViewById(R.id.gvr_view);
         gvrView.setEGLConfigChooser(8,8,8,8,16,8);
-
         gvrView.setRenderer(this);
         gvrView.setTransitionViewEnabled(true);
 
@@ -132,61 +160,54 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         }
         setGvrView(gvrView);
 
+        //Initializing matrices
         camera = new float[16];
         view = new float[16];
         modelViewProjection = new float[16];
         modelView = new float[16];
-        modelFloor = new float[16];
-        tempPosition = new float[4];
+        modelBox = new float[16];
         headRotation = new float[4];
         headView = new float[16];
 
-
+        //Putting the camera at the right place
         Matrix.setLookAtM(camera, 0, 0.0f, 0.0f, CAMERA_Z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
-        vsphere = new Virtusphere();
+        //Initializing Virtusphere
+        virtusphere = new Virtusphere();
 
-        final MainActivity ma = this;
-
-        vsphere.onEvent(new VirtusphereEvent() {
+        virtusphere.onEvent(new VirtusphereEvent() {
             @Override
-            public void moved(int x, int y) {
-                Matrix.translateM(camera, 0, x/10, 0, y/10);
+            public void moved(int i, int i1) {
+                //TODO: Implement with StreetView
             }
 
             @Override
             public void disconnected() {
-                Log.i("Virtusphere", "disconnected");
+                Log.i("Virtusphere", "Disconnected");
             }
 
             @Override
-            public void sphereExited(){
+            public void sphereExited() {
+                Log.i("Virtusphere", "Exited from capture window");
                 vibrator.vibrate(500);
             }
         });
 
+        //Connection method in another thread
+        //Android doesn't allow network operations on UI thread
         Thread virtusThread = new Thread(new Runnable() {
             @Override
             public void run() {
-                //vsphere.discoverAndConnect();
-                vsphere.connect("157.26.106.241", 28000);
+                virtusphere.connect("157.26.106.241", 28000);
             }
         });
-
         virtusThread.start();
-
     }
-
-    public int val = 1;
 
     @Override
     public void onNewFrame(HeadTransform headTransform) {
-
-
         headTransform.getHeadView(headView, 0);
-
         headTransform.getQuaternion(headRotation, 0);
-
     }
 
     @Override
@@ -194,36 +215,58 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         GLES20.glEnable(GLES20.GL_DEPTH_TEST);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
 
-        Matrix.multiplyMM(view, 0, eye.getEyeView(), 0, camera, 0);
+        checkGLError("colorParam");
 
+        Matrix.multiplyMM(view, 0, eye.getEyeView(), 0, camera, 0);
         Matrix.multiplyMV(lightPosInEyeSpace, 0, view, 0, LIGHT_POS_IN_WORLD_SPACE, 0);
 
-        float[] perspective = eye.getPerspective(Z_NEAR, Z_FAR);
+        float perspective[] = eye.getPerspective(Z_NEAR, Z_FAR);
 
-        Matrix.multiplyMM(modelView, 0, view, 0, modelFloor, 0);
+        Matrix.multiplyMM(modelView, 0, view, 0, modelBox, 0);
         Matrix.multiplyMM(modelViewProjection, 0, perspective, 0, modelView, 0);
 
-        drawFloor();
+        Matrix.setIdentityM(camera, 0);
 
+
+        drawBox();
     }
 
-    public void drawFloor(){
-        GLES20.glUseProgram(floorProgram);
+    /**
+     * Draw the box
+     */
+    public void drawBox(){
+        //Specifies the program to use
+        GLES20.glUseProgram(boxProgram);
 
-        GLES20.glUniform3fv(floorLightPosParam, 1, lightPosInEyeSpace, 0);
-        GLES20.glUniformMatrix4fv(floorModelParam, 1, false, modelFloor, 0);
-        GLES20.glUniformMatrix4fv(floorModelViewParam, 1, false, modelView, 0);
-        GLES20.glUniformMatrix4fv(floorModelViewProjectionParam, 1, false, modelViewProjection, 0);
-        GLES20.glVertexAttribPointer(floorPositionParam, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, floorVertices);
-        GLES20.glVertexAttribPointer(floorNormalParam, 3, GLES20.GL_FLOAT, false, 0, floorNormals);
-        GLES20.glVertexAttribPointer(floorColorParam, 4, GLES20.GL_FLOAT, false, 0, floorColors);
+        //Sending values to shaders
+        GLES20.glUniform3fv(boxLightPosParam, 1, lightPosInEyeSpace, 0);
+        checkGLError("boxLightPos");
+        GLES20.glUniformMatrix4fv(boxModelParam, 1, false, modelBox, 0);
+        checkGLError("boxModel");
+        GLES20.glUniformMatrix4fv(boxModelViewParam, 1, false, modelView, 0);
+        checkGLError("boxModelView");
+        GLES20.glUniformMatrix4fv(boxModelViewProjectionParam, 1, false, modelViewProjection, 0);
+        checkGLError("boxMVP");
 
-        GLES20.glEnableVertexAttribArray(floorPositionParam);
-        GLES20.glEnableVertexAttribArray(floorNormalParam);
-        GLES20.glEnableVertexAttribArray(floorColorParam);
+        GLES20.glVertexAttribPointer(boxPositionParam, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, boxVertices);
+        checkGLError("boxPos");
+        //GLES20.glVertexAttribPointer(boxNormalParam, 3, GLES20.GL_FLOAT, false, 0, boxNormals);
+       // Log.d("aaa", ""+boxNormalParam);
+        //checkGLError("boxNorm");
+  //      GLES20.glVertexAttribPointer(boxColorParam, 4, GLES20.GL_FLOAT, false, 0, boxColors);
 
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 24);
+        GLES20.glEnableVertexAttribArray(boxPositionParam);
+        checkGLError("Enable boxPos");
+        //GLES20.glEnableVertexAttribArray(boxNormalParam);
+        //checkGLError("Enable boxNorm");
+        checkGLError("Enable boxIndices");
 
+        GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, boxPositionParam);
+        checkGLError("Bind elements");
+        GLES20.glDrawElements(GLES20.GL_TRIANGLES, WorldData.SKYBOX_INDICES.length, GLES20.GL_UNSIGNED_INT, boxIndices);
+        checkGLError("Draw elements");
+
+        checkGLError("Draw skybox");
     }
 
     @Override
@@ -238,51 +281,89 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
 
     @Override
     public void onSurfaceCreated(EGLConfig eglConfig) {
-        Log.i("Info", "onSurfaceCreated");
         GLES20.glClearColor(.1f, .1f, .1f, .5f);
+        GLES20.glDisable(GLES20.GL_DEPTH_TEST);
 
-        ByteBuffer bbFloorVertices = ByteBuffer.allocateDirect(WorldData.FLOOR_COORDS.length*4);
-        bbFloorVertices.order(ByteOrder.nativeOrder());
-        floorVertices = bbFloorVertices.asFloatBuffer();
-        floorVertices.put(WorldData.FLOOR_COORDS);
-        floorVertices.position(0);
+        ByteBuffer bbBoxVertices = ByteBuffer.allocateDirect(WorldData.SKYBOX_COORDS.length*4);
+        bbBoxVertices.order(ByteOrder.nativeOrder());
+        boxVertices = bbBoxVertices.asFloatBuffer();
+        boxVertices.put(WorldData.SKYBOX_COORDS);
+        boxVertices.position(0);
 
-        ByteBuffer bbFloorNormals = ByteBuffer.allocateDirect(WorldData.FLOOR_NORMALS.length*4);
-        bbFloorNormals.order(ByteOrder.nativeOrder());
-        floorNormals = bbFloorNormals.asFloatBuffer();
-        floorNormals.put(WorldData.FLOOR_NORMALS);
-        floorNormals.position(0);
+        ByteBuffer bbBoxIndices = ByteBuffer.allocateDirect(WorldData.SKYBOX_INDICES.length*4);
+        bbBoxIndices.order(ByteOrder.nativeOrder());
+        boxIndices = bbBoxIndices.asIntBuffer();
+        boxIndices.put(WorldData.SKYBOX_INDICES);
+        boxIndices.position(0);
 
-        ByteBuffer bbFloorColors = ByteBuffer.allocateDirect(WorldData.FLOOR_COLORS.length*4);
-        bbFloorColors.order(ByteOrder.nativeOrder());
-        floorColors = bbFloorColors.asFloatBuffer();
-        floorColors.put(WorldData.FLOOR_COLORS);
-        floorColors.position(0);
-
-        int vertexShader = loadGlShader(GLES20.GL_VERTEX_SHADER, R.raw.light_vertex);
-        int gridShader = loadGlShader(GLES20.GL_FRAGMENT_SHADER, R.raw.grid_fragment);
-        int passthroughShader = loadGlShader(GLES20.GL_FRAGMENT_SHADER, R.raw.passthrough_fragment);
-
-        floorProgram = GLES20.glCreateProgram();
-        GLES20.glAttachShader(floorProgram, vertexShader);
-        GLES20.glAttachShader(floorProgram, gridShader);
-        GLES20.glLinkProgram(floorProgram);
-        GLES20.glUseProgram(floorProgram);
-
-        floorModelParam = GLES20.glGetAttribLocation(floorProgram, "a_Position");
-        floorNormalParam = GLES20.glGetAttribLocation(floorProgram, "a_Normal");
-        floorColorParam = GLES20.glGetAttribLocation(floorProgram, "a_Color");
-        floorLightPosParam = GLES20.glGetUniformLocation(floorProgram, "u_LightPos");
-        floorPositionParam = GLES20.glGetAttribLocation(floorProgram, "a_Position");
-        floorModelViewParam = GLES20.glGetUniformLocation(floorProgram, "u_MVMatrix");
-        floorModelViewProjectionParam = GLES20.glGetUniformLocation(floorProgram, "u_MVP");
+        ByteBuffer bbBoxNormals = ByteBuffer.allocateDirect(WorldData.SKYBOX_NORMALS.length*4);
+        bbBoxNormals.order(ByteOrder.nativeOrder());
+        boxNormals = bbBoxNormals.asFloatBuffer();
+        boxNormals.put(WorldData.SKYBOX_NORMALS);
+        boxNormals.position(0);
 
 
-        Matrix.setIdentityM(modelFloor, 0);
-        Matrix.translateM(modelFloor, 0, 0, -floorDepth, 0);
+        int[] texIds = new int[1];
+        GLES20.glGenTextures(1, texIds, 0);
+        boxTextureParam = texIds[0];
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_CUBE_MAP, boxTextureParam);
+
+        Bitmap[] textures = {getBmpFromRaw(R.raw.posx), getBmpFromRaw(R.raw.negx), getBmpFromRaw(R.raw.posy), getBmpFromRaw(R.raw.negy), getBmpFromRaw(R.raw.posz), getBmpFromRaw(R.raw.negz)};
+
+        for(int i=0; i<6; i++){
+
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GLES20.GL_RGBA, textures[i], 0);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        }
+        GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_CUBE_MAP);
 
 
+
+        int vertexShader = loadGLShader(GLES20.GL_VERTEX_SHADER, R.raw.vertex);
+        int fragmentShader = loadGLShader(GLES20.GL_FRAGMENT_SHADER, R.raw.fragment);
+
+        boxProgram = GLES20.glCreateProgram();
+        GLES20.glAttachShader(boxProgram, vertexShader);
+        GLES20.glAttachShader(boxProgram, fragmentShader);
+        GLES20.glLinkProgram(boxProgram);
+        GLES20.glUseProgram(boxProgram);
+
+        checkGLError("Box Program");
+
+        boxModelParam = GLES20.glGetAttribLocation(boxProgram, "aPosition");
+        checkGLError("Program attributes");
+        boxNormalParam = GLES20.glGetAttribLocation(boxProgram, "aNormal");
+        checkGLError("Program attributes");
+        boxColorParam = GLES20.glGetAttribLocation(boxProgram, "aColor");
+        checkGLError("Program attributes");
+        boxLightPosParam = GLES20.glGetUniformLocation(boxProgram, "uLightPos");
+        checkGLError("Program attributes");
+        boxPositionParam = GLES20.glGetAttribLocation(boxProgram, "aPosition");
+        checkGLError("Program attributes");
+        boxModelViewParam = GLES20.glGetUniformLocation(boxProgram, "uMVMatrix");
+        checkGLError("Program attributes");
+        boxModelViewProjectionParam = GLES20.glGetUniformLocation(boxProgram, "uMVP");
+
+        checkGLError("Program attributes");
+
+        Matrix.setIdentityM(modelBox, 0);
+        Matrix.translateM(modelBox, 0, 0, 0, 0);
+
+        checkGLError("onSurfaceCreated");
     }
+
+    /*private ByteBuffer getSkybox(){
+        InputStream is = getApplicationContext().getResources().openRawResource(R.raw.test_skybox);
+        Bitmap bmp = BitmapFactory.decodeStream(is);
+        int bytes = bmp.getByteCount();
+        ByteBuffer pixels = ByteBuffer.allocate(bytes);
+        bmp.copyPixelsToBuffer(pixels);
+
+        return pixels;
+    }*/
 
     @Override
     public void onRendererShutdown() {
