@@ -60,7 +60,7 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
     private int boxNormalParam;
     private int boxColorParam;
     private int boxIndicesParam;
-    private int boxTextureParam;
+    private int boxTextureParam = -1;
     private int boxModelParam;
     private int boxModelViewParam;
     private int boxModelViewProjectionParam;
@@ -74,6 +74,9 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
     private float[] modelView;
     private float[] modelBox;
     private float[] headRotation;
+
+    private int skyboxId = 0;
+    private int oldSkybox = skyboxId;
 
     //OpenGL parameters
     private float floorDepth = 20f;
@@ -227,6 +230,10 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
 
         Matrix.setIdentityM(camera, 0);
 
+        if(skyboxId != oldSkybox){
+            setSkybox(skyboxId);
+            oldSkybox = skyboxId;
+        }
 
         drawBox();
     }
@@ -241,7 +248,7 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         //Sending values to shaders
         GLES20.glUniform3fv(boxLightPosParam, 1, lightPosInEyeSpace, 0);
         checkGLError("boxLightPos");
-        GLES20.glUniformMatrix4fv(boxModelParam, 1, false, modelBox, 0);
+        //GLES20.glUniformMatrix4fv(boxModelParam, 1, false, modelBox, 0);
         checkGLError("boxModel");
         GLES20.glUniformMatrix4fv(boxModelViewParam, 1, false, modelView, 0);
         checkGLError("boxModelView");
@@ -302,25 +309,7 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         boxNormals.put(WorldData.SKYBOX_NORMALS);
         boxNormals.position(0);
 
-
-        int[] texIds = new int[1];
-        GLES20.glGenTextures(1, texIds, 0);
-        boxTextureParam = texIds[0];
-
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_CUBE_MAP, boxTextureParam);
-
-        Bitmap[] textures = {getBmpFromRaw(R.raw.posx), getBmpFromRaw(R.raw.negx), getBmpFromRaw(R.raw.posy), getBmpFromRaw(R.raw.negy), getBmpFromRaw(R.raw.posz), getBmpFromRaw(R.raw.negz)};
-
-        for(int i=0; i<6; i++){
-
-            GLUtils.texImage2D(GLES20.GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GLES20.GL_RGBA, textures[i], 0);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-        }
-        GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_CUBE_MAP);
-
-
+        setSkybox(0);
 
         int vertexShader = loadGLShader(GLES20.GL_VERTEX_SHADER, R.raw.vertex);
         int fragmentShader = loadGLShader(GLES20.GL_FRAGMENT_SHADER, R.raw.fragment);
@@ -355,6 +344,38 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         checkGLError("onSurfaceCreated");
     }
 
+    public void setSkybox(int skyid){
+
+        if(skyid == 0){
+            Bitmap[] textures = {getBmpFromRaw(R.raw.sky0_posx), getBmpFromRaw(R.raw.sky0_negx), getBmpFromRaw(R.raw.sky0_posy), getBmpFromRaw(R.raw.sky0_negy), getBmpFromRaw(R.raw.sky0_posz), getBmpFromRaw(R.raw.sky0_negz)};
+
+            loadSkybox(textures);
+        } else if(skyid == 1){
+            Bitmap[] textures = {getBmpFromRaw(R.raw.sky1_posx), getBmpFromRaw(R.raw.sky1_negx), getBmpFromRaw(R.raw.sky1_posy), getBmpFromRaw(R.raw.sky1_negy), getBmpFromRaw(R.raw.sky1_posz), getBmpFromRaw(R.raw.sky1_negz)};
+            loadSkybox(textures);
+        }
+    }
+
+    private void loadSkybox(Bitmap[] textures){
+        if(boxTextureParam == -1) {
+            int[] texIds = new int[1];
+            GLES20.glGenTextures(1, texIds, 0);
+            boxTextureParam = texIds[0];
+        }
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_CUBE_MAP, boxTextureParam);
+
+
+
+        for(int i=0; i<6; i++){
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GLES20.GL_RGBA, textures[i], 0);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        }
+        GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_CUBE_MAP);
+    }
+
     /*private ByteBuffer getSkybox(){
         InputStream is = getApplicationContext().getResources().openRawResource(R.raw.test_skybox);
         Bitmap bmp = BitmapFactory.decodeStream(is);
@@ -368,5 +389,11 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
     @Override
     public void onRendererShutdown() {
 
+    }
+
+    @Override
+    public void onCardboardTrigger(){
+        Log.d("Info", "Loading skybox "+((skyboxId+1)%2));
+        skyboxId = ++skyboxId%2;
     }
 }
