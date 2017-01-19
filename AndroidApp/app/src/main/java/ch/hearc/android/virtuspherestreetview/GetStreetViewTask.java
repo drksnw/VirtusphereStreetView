@@ -2,7 +2,9 @@ package ch.hearc.android.virtuspherestreetview;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.os.AsyncTask;
+import android.util.DisplayMetrics;
 import android.util.Log;
 
 import com.google.common.logging.nano.Vr;
@@ -75,20 +77,20 @@ public class GetStreetViewTask extends AsyncTask<String, Void, Object>{
                 Bitmap left = BitmapFactory.decodeStream(in);
 
                 //Top Image
-                url = new URL(Config.STREET_VIEW_BASE_URL+"&location="+lat+","+lon+"&heading=90&fov=92&pitch=90");
+                url = new URL(Config.STREET_VIEW_BASE_URL+"&location="+lat+","+lon+"&heading=-90&fov=92&pitch=90");
                 urlConnection = (HttpsURLConnection) url.openConnection();
                 in = new BufferedInputStream(urlConnection.getInputStream());
                 Bitmap top = BitmapFactory.decodeStream(in);
 
                 //Bottom Image
-                url = new URL(Config.STREET_VIEW_BASE_URL+"&location="+lat+","+lon+"&heading=90&fov=92&pitch=-90");
+                url = new URL(Config.STREET_VIEW_BASE_URL+"&location="+lat+","+lon+"&heading=-90&fov=92&pitch=-90");
                 urlConnection = (HttpsURLConnection) url.openConnection();
                 in = new BufferedInputStream(urlConnection.getInputStream());
                 Bitmap bottom = BitmapFactory.decodeStream(in);
 
                 //Log.d("texts", "For pos "+lat+" "+lon+", got: "+(front != null ? "front " : "")+(back != null ? "back " : "")+(top != null ? "top " : "")+(bottom != null ? "bottom " : "")+(left != null ? "left " : "")+(right != null ? "right " : ""));
 
-                Bitmap[] textures = {front, back, top, bottom, left, right};
+                Bitmap[] textures = {flip(front), flip(back), flip(top), flip(bottom), flip(right), flip(left)};
                 return textures;
             }catch (Exception e){
                 e.printStackTrace();
@@ -140,5 +142,15 @@ public class GetStreetViewTask extends AsyncTask<String, Void, Object>{
         }
 
         return null;
+    }
+
+    Bitmap flip(Bitmap d)
+    {
+        Matrix m = new Matrix();
+        m.preScale(-1, 1);
+        Bitmap src = d;
+        Bitmap dst = Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, false);
+        dst.setDensity(DisplayMetrics.DENSITY_DEFAULT);
+        return dst;
     }
 }

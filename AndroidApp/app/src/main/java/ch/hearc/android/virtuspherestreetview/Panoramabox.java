@@ -21,11 +21,17 @@ import java.nio.IntBuffer;
 
 public class Panoramabox {
 
+    public static final int BOX_NOT_CREATED = -1;
+    public static final int BOX_BEING_CREATED = 0;
+    public static final int BOX_CREATED = 1;
+
     private MainActivity myParent;
     private float posX,posY;
 
     private String lat, lon;
     private int textureId;
+
+    private int created = BOX_NOT_CREATED;
 
     private FloatBuffer myVertices;
     private FloatBuffer myNormals;
@@ -45,26 +51,8 @@ public class Panoramabox {
 
     public boolean finishedDLPics = false;
 
-    /**
-     * Reads a file stored in R.raw. Used to load shaders.
-     * @param resId Resource ID (R.raw.file_name)
-     * @return A String with the contents of the file
-     */
-    private String readRawTextFile(int resId){
-        InputStream inputStream = myParent.getResources().openRawResource(resId);
-        try{
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while((line = reader.readLine()) != null){
-                sb.append(line).append("\n");
-            }
-            reader.close();
-            return sb.toString();
-        } catch(IOException ex){
-            ex.printStackTrace();
-        }
-        return null;
+    public int isCreated(){
+        return created;
     }
 
     public float getPosX() {
@@ -83,34 +71,6 @@ public class Panoramabox {
         return lon;
     }
 
-    /**
-     * Compiles raw text file into OpenGL Shader
-     * @param type Shader type (Vertex or Fragment shader)
-     * @param resId Resource ID of the shader source code (R.raw.shader_code)
-     * @return Pointer to compiled shader
-     */
-    private int loadGLShader(int type, int resId){
-        String code = readRawTextFile(resId);
-        int shader = GLES20.glCreateShader(type);
-        GLES20.glShaderSource(shader, code);
-        GLES20.glCompileShader(shader);
-
-        final int[] compileStatus = new int[1];
-        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, compileStatus, 0);
-
-        if(compileStatus[0] == 0){
-            Log.e("Error", "Error compiling shader: "+GLES20.glGetShaderInfoLog(shader));
-            GLES20.glDeleteShader(shader);
-            shader = 0;
-        }
-
-        if(shader == 0){
-            throw new RuntimeException("Error creating shader.");
-        }
-
-        return shader;
-    }
-
     private static void checkGLError(String label){
         int error;
         while ((error = GLES20.glGetError()) != GLES20.GL_NO_ERROR){
@@ -118,7 +78,7 @@ public class Panoramabox {
         }
     }
 
-    public Panoramabox(String lat, String lon, int textureId, float posX, float posY, MainActivity myParent){
+    public Panoramabox(String lat, String lon, int textureId, float posX, float posY, MainActivity myParent, boolean createNow){
         this.lat = lat;
         this.lon = lon;
         this.textureId = textureId;
@@ -129,8 +89,10 @@ public class Panoramabox {
         Matrix.setIdentityM(modelView, 0);
         Matrix.translateM(modelView, 0, posX, 0, posY);
 
+        if(createNow){
+            create();
+        }
 
-        create();
 
         Log.d("Panoramabox", "New panorama box created for position "+lat+", "+lon+" at virtuals X: "+posX+" and Y: "+posY);
     }
@@ -156,14 +118,15 @@ public class Panoramabox {
 
 
 
-        int vertexShader = loadGLShader(GLES20.GL_VERTEX_SHADER, R.raw.vertex);
-        int fragmentShader = loadGLShader(GLES20.GL_FRAGMENT_SHADER, R.raw.fragment);
+
 
         myProgram = GLES20.glCreateProgram();
-        GLES20.glAttachShader(myProgram, vertexShader);
-        GLES20.glAttachShader(myProgram, fragmentShader);
+        GLES20.glAttachShader(myProgram, myParent.vertexShader);
+        GLES20.glAttachShader(myProgram, myParent.fragmentShader);
         GLES20.glLinkProgram(myProgram);
         GLES20.glUseProgram(myProgram);
+
+        MainActivity.checkGLError("Create Program");
 
         myLightPosParam = GLES20.glGetUniformLocation(myProgram, "uLightPos");
         myPositionParam = GLES20.glGetAttribLocation(myProgram, "aPosition");
@@ -171,13 +134,17 @@ public class Panoramabox {
         myModelViewProjectionParam = GLES20.glGetUniformLocation(myProgram, "uMVP");
         mySamplerParam = GLES20.glGetUniformLocation(myProgram, "uSampler");
 
+        MainActivity.checkGLError("Get Locations");
+
         try {
             myTextures = (Bitmap[])new GetStreetViewTask(this).execute("GET_PANO",lat, lon).get();
-            while(!finishedDLPics);
+            //while(!finishedDLPics);
 
             int[] texIds = new int[1];
             GLES20.glGenTextures(1, texIds, 0);
             myTextureParam = texIds[0];
+
+            MainActivity.checkGLError("Gen Textures");
 
             GLES20.glActiveTexture(textureId);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_CUBE_MAP, myTextureParam);
@@ -190,24 +157,33 @@ public class Panoramabox {
 
             GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_CUBE_MAP);
             GLES20.glUniform1i(mySamplerParam, textureId-GLES20.GL_TEXTURE0);
+            MainActivity.checkGLError("Created Mipmap + set sampler");
 
         } catch(Exception e){
             e.printStackTrace();
         }
+        created = BOX_CREATED;
     }
 
     public void draw(){
         GLES20.glUseProgram(myProgram);
+        MainActivity.checkGLError("Use program");
         GLES20.glActiveTexture(textureId);
+        MainActivity.checkGLError("Active texture");
 
         GLES20.glUniform3fv(myLightPosParam, 1, myParent.lightPosInEyeSpace, 0);
+        MainActivity.checkGLError("Set lightpos");
         GLES20.glUniformMatrix4fv(myModelViewParam, 1, false, modelView, 0);
+        MainActivity.checkGLError("Set modelview");
         GLES20.glUniformMatrix4fv(myModelViewProjectionParam, 1, false, myParent.modelViewProjection, 0);
+        MainActivity.checkGLError("Set projection");
 
         GLES20.glVertexAttribPointer(myPositionParam, MainActivity.COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, myVertices);
         GLES20.glEnableVertexAttribArray(myPositionParam);
+        MainActivity.checkGLError("Set vertices");
 
         GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, myPositionParam);
         GLES20.glDrawElements(GLES20.GL_TRIANGLES, WorldData.SKYBOX_INDICES.length, GLES20.GL_UNSIGNED_INT, myIndices);
+        MainActivity.checkGLError("draw elements");
     }
 }
