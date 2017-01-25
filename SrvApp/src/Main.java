@@ -53,8 +53,6 @@ public class Main extends Application {
                     //Getting deltas
                     int dx = ScreenHelper.getDeltaFromCenterX((int)event.getScreenX());
                     int dy = ScreenHelper.getDeltaFromCenterY((int)event.getScreenY());
-
-
                     server.sendToAll(String.format("MOVE#%d;%d",dx,dy));
 
                     //Sets the mouse pointer on the center of the screen

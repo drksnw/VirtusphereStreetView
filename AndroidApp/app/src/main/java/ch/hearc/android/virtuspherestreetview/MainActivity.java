@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 import android.opengl.GLUtils;
 import android.opengl.Matrix;
+import android.os.AsyncTask;
 import android.os.Vibrator;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -33,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.microedition.khronos.egl.EGLConfig;
 
@@ -85,6 +87,11 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
     private float[] modelBox;
     private float[] headRotation;
 
+    private String givenServerIp;
+    private String givenLat;
+    private String givenLon;
+
+
     private int skyboxId = 0;
     private int oldSkybox = skyboxId;
 
@@ -95,7 +102,7 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
     private boolean skyboxSet = false;
 
     private Bitmap[] textures;
-    private HashMap<String, Panoramabox> loadedPanoramas;
+    private ConcurrentHashMap<String, Panoramabox> loadedPanoramas;
     private HashMap<String, Panoramabox> tmpLoadedPanoramas;
     private HashSet<String> adjLoaded;
 
@@ -170,7 +177,11 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        loadedPanoramas = new HashMap<>();
+        givenServerIp = getIntent().getStringExtra("srv_ip");
+        givenLat = getIntent().getStringExtra("lat");
+        givenLon = getIntent().getStringExtra("lon");
+
+        loadedPanoramas = new ConcurrentHashMap<>();
         tmpLoadedPanoramas = new HashMap<>();
         adjLoaded = new HashSet<>();
         //Initializing vibrator
@@ -206,19 +217,29 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
 
         virtusphere.onEvent(new VirtusphereEvent() {
             @Override
-            public void moved(int i, int i1) {
-                //TODO: Implement with StreetView
-                Matrix.translateM(camera, 0, (float)i/10, 0, (float)i1/10);
+            public void moved(final int i, final int i1) {
+                Log.d("Youhou", "Youhou1");
+                (new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Log.d("Youhou", "Youhou2");
+                        Matrix.translateM(camera, 0, (float)i/10, 0, (float)i1/10);
 
-                float userX = -camera[12];
-                float userY = -camera[14];
+                        float userX = -camera[12];
+                        float userY = -camera[14];
 
-                for(Panoramabox pb : loadedPanoramas.values()){
-
-                    if(Math.abs(pb.getPosX() - userX) < 10 && Math.abs(pb.getPosY() - userY) < 10){
-                        loadPanorama(pb.getLat(), pb.getLon(), pb.getPosX(), pb.getPosY(), false);
+                        for(final Panoramabox pb : loadedPanoramas.values()){
+                            if(Math.abs(pb.getPosX() - userX) < 10 && Math.abs(pb.getPosY() - userY) < 10){
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        loadPanorama(pb.getLat(), pb.getLon(), pb.getPosX(), pb.getPosY(), false);
+                                    }
+                                });
+                            }
+                        }
                     }
-                }
+                })).start();
             }
 
             @Override
@@ -235,13 +256,12 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
 
         //Connection method in another thread
         //Android doesn't allow network operations on UI thread
-        Thread virtusThread = new Thread(new Runnable() {
+        AsyncTask.execute(new Runnable() {
             @Override
             public void run() {
-                virtusphere.connect("157.26.106.104", 28000);
+                virtusphere.connect(givenServerIp, 28000);
             }
         });
-        virtusThread.start();
 
         Log.d("onCreate", "2");
 
@@ -280,7 +300,6 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
 
 
         for(Panoramabox pb : loadedPanoramas.values()){
-
                 pb.draw();
         }
         for(Map.Entry<String, Panoramabox> entry : tmpLoadedPanoramas.entrySet()){
@@ -313,7 +332,7 @@ public class MainActivity extends GvrActivity implements GvrView.StereoRenderer{
         vertexShader = loadGLShader(GLES20.GL_VERTEX_SHADER, R.raw.vertex);
         fragmentShader = loadGLShader(GLES20.GL_FRAGMENT_SHADER, R.raw.fragment);
 
-        loadPanorama("47.1708201","7.2651018", 0, 0, true);
+        loadPanorama(givenLat, givenLon, 0, 0, true);
 
         checkGLError("Program attributes");
 

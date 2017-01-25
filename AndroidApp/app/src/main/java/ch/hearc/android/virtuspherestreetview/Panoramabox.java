@@ -89,6 +89,11 @@ public class Panoramabox {
         Matrix.setIdentityM(modelView, 0);
         Matrix.translateM(modelView, 0, posX, 0, posY);
 
+        try {
+            myTextures = (Bitmap[]) new GetStreetViewTask(this).execute("GET_PANO", lat, lon).get();
+        } catch(Exception ex){
+            ex.printStackTrace();
+        }
         if(createNow){
             create();
         }
@@ -136,32 +141,28 @@ public class Panoramabox {
 
         MainActivity.checkGLError("Get Locations");
 
-        try {
-            myTextures = (Bitmap[])new GetStreetViewTask(this).execute("GET_PANO",lat, lon).get();
-            //while(!finishedDLPics);
 
-            int[] texIds = new int[1];
-            GLES20.glGenTextures(1, texIds, 0);
-            myTextureParam = texIds[0];
+        //while(!finishedDLPics);
 
-            MainActivity.checkGLError("Gen Textures");
+        int[] texIds = new int[1];
+        GLES20.glGenTextures(1, texIds, 0);
+        myTextureParam = texIds[0];
 
-            GLES20.glActiveTexture(textureId);
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_CUBE_MAP, myTextureParam);
+        MainActivity.checkGLError("Gen Textures");
 
-            for(int i=0; i<6; i++){
-                GLUtils.texImage2D(GLES20.GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GLES20.GL_RGBA, myTextures[i], 0);
-                GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-                GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-            }
+        GLES20.glActiveTexture(textureId);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_CUBE_MAP, myTextureParam);
 
-            GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_CUBE_MAP);
-            GLES20.glUniform1i(mySamplerParam, textureId-GLES20.GL_TEXTURE0);
-            MainActivity.checkGLError("Created Mipmap + set sampler");
-
-        } catch(Exception e){
-            e.printStackTrace();
+        for(int i=0; i<6; i++){
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GLES20.GL_RGBA, myTextures[i], 0);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_CUBE_MAP, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
         }
+
+        GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_CUBE_MAP);
+        GLES20.glUniform1i(mySamplerParam, textureId-GLES20.GL_TEXTURE0);
+        MainActivity.checkGLError("Created Mipmap + set sampler");
+
         created = BOX_CREATED;
     }
 

@@ -19,11 +19,13 @@
         <activity
             android:name=".MainActivity"
             android:screenOrientation="landscape">
+        </activity>
+        <activity android:name=".ConfigActivity"
+                  android:theme="@style/Theme.AppCompat.DayNight.DarkActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="com.google.intent.category.CARDBOARD" />
             </intent-filter>
         </activity>
     </application>

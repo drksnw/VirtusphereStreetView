@@ -29,6 +29,5 @@ dependencies {
     compile project(':audio')
     compile project(':base')
     compile project(':common')
-    compile 'com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-7'
     compile files('libs/Virtuslib.jar')
 }
